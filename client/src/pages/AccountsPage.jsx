@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { usePlaidLink } from 'react-plaid-link';
 import api from '../api/axios';
 import { Building2, RefreshCw } from 'lucide-react';
+import { useToast } from '../hooks/useToast';
 
 export default function AccountsPage() {
   const [linkToken, setLinkToken] = useState(null);
   const [accounts, setAccounts] = useState([]);
   const [syncing, setSyncing] = useState(false);
-  const [message, setMessage] = useState('');
+  const toast = useToast();
 
   const fetchAccounts = async () => {
     try {
@@ -26,13 +27,17 @@ export default function AccountsPage() {
   const { open, ready } = usePlaidLink({
     token: linkToken,
     onSuccess: async (publicToken, metadata) => {
-      await api.post('/plaid/exchange-token', {
-        publicToken,
-        institutionName: metadata.institution.name,
-        institutionId: metadata.institution.institution_id,
-      });
-      setMessage('Bank linked! Syncing transactions...');
-      handleSync();
+      try {
+        await api.post('/plaid/exchange-token', {
+          publicToken,
+          institutionName: metadata.institution.name,
+          institutionId: metadata.institution.institution_id,
+        });
+        toast.success(`${metadata.institution.name} linked — syncing transactions…`);
+        handleSync();
+      } catch {
+        toast.error('Failed to link bank. Please try again.');
+      }
     },
   });
 
@@ -40,10 +45,10 @@ export default function AccountsPage() {
     setSyncing(true);
     try {
       const { data } = await api.post('/plaid/sync');
-      setMessage(data.message);
+      toast.success(data.message || 'Transactions synced successfully.');
       fetchAccounts();
     } catch {
-      setMessage('Sync failed. Please try again.');
+      toast.error('Sync failed. Please try again.');
     } finally {
       setSyncing(false);
     }
@@ -51,14 +56,22 @@ export default function AccountsPage() {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Connected Accounts</h2>
+        <h1 className="text-2xl font-bold" style={{ color: '#f1f5f9', letterSpacing: '-0.02em' }}>
+          Connected Accounts
+        </h1>
         <div className="flex gap-2">
           {accounts.length > 0 && (
             <button
               onClick={handleSync}
               disabled={syncing}
-              className="flex items-center gap-2 text-gray-600 border border-gray-300 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-60"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium cursor-pointer disabled:opacity-60"
+              style={{
+                background: 'rgba(255,255,255,0.05)',
+                color: '#cbd5e1',
+                border: '1px solid rgba(255,255,255,0.08)',
+              }}
             >
               <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
               {syncing ? 'Syncing...' : 'Sync transactions'}
@@ -67,39 +80,42 @@ export default function AccountsPage() {
           <button
             onClick={() => open()}
             disabled={!ready}
-            className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60"
+            className="btn-primary flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer disabled:opacity-60"
           >
             <Building2 size={16} /> Link Bank Account
           </button>
         </div>
       </div>
 
-      {message && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-lg text-sm">
-          {message}
-        </div>
-      )}
-
+      {/* Account cards */}
       <div className="space-y-3">
         {accounts.map((a) => (
-          <div key={a.account_id} className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 flex items-center justify-between">
+          <div
+            key={a.account_id}
+            className="glass rounded-2xl p-6 flex items-center justify-between"
+          >
             <div>
-              <p className="font-semibold text-gray-800 dark:text-gray-200">{a.name}</p>
-              <p className="text-sm text-gray-500">{a.institutionName} · {a.subtype}</p>
+              <p className="font-semibold text-sm" style={{ color: '#f1f5f9' }}>{a.name}</p>
+              <p className="text-xs mt-0.5" style={{ color: '#475569' }}>
+                {a.institutionName} · {a.subtype}
+              </p>
             </div>
             <div className="text-right">
-              <p className="font-bold text-lg text-gray-900 dark:text-white">
+              <p className="font-bold text-lg font-mono" style={{ color: '#10b981' }}>
                 ${a.balances.current?.toFixed(2) ?? '—'}
               </p>
-              <p className="text-xs text-gray-400">{a.type}</p>
+              <p className="text-xs capitalize mt-0.5" style={{ color: '#334155' }}>{a.type}</p>
             </div>
           </div>
         ))}
+
         {accounts.length === 0 && (
-          <div className="text-center py-16 text-gray-400">
-            <Building2 size={48} className="mx-auto mb-4 opacity-30" />
-            <p className="text-lg font-medium">No accounts linked yet</p>
-            <p className="text-sm mt-1">Click "Link Bank Account" to connect your bank via Plaid</p>
+          <div className="glass rounded-2xl text-center py-16" style={{ color: '#475569' }}>
+            <Building2 size={48} className="mx-auto mb-4" style={{ color: '#334155' }} />
+            <p className="text-lg font-medium" style={{ color: '#cbd5e1' }}>No accounts linked yet</p>
+            <p className="text-sm mt-1" style={{ color: '#475569' }}>
+              Click "Link Bank Account" to connect your bank via Plaid
+            </p>
           </div>
         )}
       </div>
