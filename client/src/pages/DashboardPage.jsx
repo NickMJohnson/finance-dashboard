@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchMonthlyTotals, fetchSpendingByCategory } from '../store/slices/transactionSlice';
 import { fetchGoals } from '../store/slices/goalSlice';
@@ -8,13 +8,44 @@ import {
   PieChart, Pie, Cell, Legend,
 } from 'recharts';
 import { TrendingUp, TrendingDown, Wallet } from 'lucide-react';
+import Card from '../components/ui/Card';
+import ProgressBar from '../components/ui/ProgressBar';
+import Skeleton from '../components/ui/Skeleton';
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-const Card = ({ children, style = {} }) => (
-  <div className="glass rounded-2xl p-6" style={style}>{children}</div>
-);
+function ChartSkeleton({ kind }) {
+  if (kind === 'pie') {
+    return (
+      <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div
+          className="skeleton-shimmer"
+          style={{
+            width: 160,
+            height: 160,
+            borderRadius: '50%',
+            background:
+              'radial-gradient(circle, transparent 48%, rgba(255,255,255,0.07) 49%, rgba(255,255,255,0.07) 72%, transparent 73%)',
+            backgroundSize: '200% 100%',
+            animation: 'skeleton-shimmer 1.4s ease-in-out infinite',
+          }}
+        />
+      </div>
+    );
+  }
+  const heights = [55, 85, 40, 95, 65, 75];
+  return (
+    <div style={{ height: 220, display: 'flex', alignItems: 'flex-end', gap: 16, padding: '0 8px 28px' }}>
+      {heights.map((h, i) => (
+        <div key={i} className="flex-1 flex gap-1.5" style={{ height: '100%', alignItems: 'flex-end' }}>
+          <Skeleton width="100%" height={`${h}%`} rounded={6} />
+          <Skeleton width="100%" height={`${Math.max(20, h - 25)}%`} rounded={6} />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
@@ -38,12 +69,20 @@ export default function DashboardPage() {
   const user = useSelector((s) => s.auth.user);
 
   const now = new Date();
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    dispatch(fetchMonthlyTotals({ months: 6 }));
-    dispatch(fetchSpendingByCategory({ year: now.getFullYear(), month: now.getMonth() + 1 }));
-    dispatch(fetchGoals());
-    dispatch(fetchBudgets({ year: now.getFullYear(), month: now.getMonth() + 1 }));
+    let cancelled = false;
+    Promise.all([
+      dispatch(fetchMonthlyTotals({ months: 6 })),
+      dispatch(fetchSpendingByCategory({ year: now.getFullYear(), month: now.getMonth() + 1 })),
+      dispatch(fetchGoals()),
+      dispatch(fetchBudgets({ year: now.getFullYear(), month: now.getMonth() + 1 })),
+    ]).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch]);
 
   const chartData = monthlyData.map((d) => ({
@@ -100,38 +139,47 @@ export default function DashboardPage() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4">
-        {summaryCards.map(({ label, value, icon: Icon, color, glow }) => (
-          <Card key={label} style={{ position: 'relative', overflow: 'hidden' }}>
-            <div
-              style={{
-                position: 'absolute', top: -20, right: -20,
-                width: 80, height: 80, borderRadius: '50%',
-                background: glow, filter: 'blur(20px)',
-              }}
-            />
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs font-medium mb-2" style={{ color: '#64748b' }}>{label}</p>
-                <p className="text-2xl font-bold font-mono" style={{ color }}>
-                  ${value.toFixed(2)}
-                </p>
-              </div>
-              <div
-                className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{ background: glow }}
-              >
-                <Icon size={17} color={color} />
-              </div>
-            </div>
-          </Card>
-        ))}
+        {loading
+          ? Array.from({ length: 3 }).map((_, i) => (
+              <Card key={`sc-${i}`}>
+                <Skeleton width={90} height={11} style={{ marginBottom: 12 }} />
+                <Skeleton width={140} height={28} />
+              </Card>
+            ))
+          : summaryCards.map(({ label, value, icon: Icon, color, glow }) => (
+              <Card key={label} style={{ position: 'relative', overflow: 'hidden' }}>
+                <div
+                  style={{
+                    position: 'absolute', top: -20, right: -20,
+                    width: 80, height: 80, borderRadius: '50%',
+                    background: glow, filter: 'blur(20px)',
+                  }}
+                />
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-xs font-medium mb-2" style={{ color: '#64748b' }}>{label}</p>
+                    <p className="text-2xl font-bold font-mono" style={{ color }}>
+                      ${value.toFixed(2)}
+                    </p>
+                  </div>
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{ background: glow }}
+                  >
+                    <Icon size={17} color={color} />
+                  </div>
+                </div>
+              </Card>
+            ))}
       </div>
 
       {/* Charts */}
       <div className="grid grid-cols-2 gap-4">
         <Card>
           <h3 className="text-sm font-semibold mb-4" style={{ color: '#94a3b8' }}>Income vs Expenses</h3>
-          {chartData.length > 0 ? (
+          {loading ? (
+            <ChartSkeleton kind="bars" />
+          ) : chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={chartData} barCategoryGap="30%">
                 <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#475569' }} axisLine={false} tickLine={false} />
@@ -148,7 +196,9 @@ export default function DashboardPage() {
 
         <Card>
           <h3 className="text-sm font-semibold mb-4" style={{ color: '#94a3b8' }}>Spending by Category</h3>
-          {pieData.length > 0 ? (
+          {loading ? (
+            <ChartSkeleton kind="pie" />
+          ) : pieData.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
                 <Pie
@@ -199,17 +249,7 @@ export default function DashboardPage() {
                       ${b.spent.toFixed(2)} / ${b.limit.toFixed(2)}
                     </span>
                   </div>
-                  <div className="progress-track h-1.5">
-                    <div
-                      className="progress-fill"
-                      style={{
-                        width: `${pct}%`,
-                        background: over
-                          ? 'linear-gradient(90deg,#ef4444,#f87171)'
-                          : 'linear-gradient(90deg,#6366f1,#818cf8)',
-                      }}
-                    />
-                  </div>
+                  <ProgressBar value={pct} variant={over ? 'danger' : 'primary'} height="sm" />
                 </div>
               );
             })}
@@ -225,26 +265,18 @@ export default function DashboardPage() {
             {goals.slice(0, 4).map((g) => {
               const pct = Math.min((g.currentAmount / g.targetAmount) * 100, 100);
               return (
-                <div key={g._id} className="glass rounded-xl p-4">
+                <Card key={g._id} rounded="rounded-xl" padding="p-4">
                   <div className="flex justify-between items-start mb-3">
                     <span className="text-sm font-medium" style={{ color: '#cbd5e1' }}>{g.name}</span>
                     <span className="text-xs font-mono font-semibold" style={{ color: '#818cf8' }}>
                       {pct.toFixed(0)}%
                     </span>
                   </div>
-                  <div className="progress-track h-1 mb-2">
-                    <div
-                      className="progress-fill"
-                      style={{
-                        width: `${pct}%`,
-                        background: 'linear-gradient(90deg,#10b981,#34d399)',
-                      }}
-                    />
-                  </div>
+                  <ProgressBar value={pct} variant="success" height="xs" className="mb-2" />
                   <p className="text-xs font-mono" style={{ color: '#475569' }}>
                     ${g.currentAmount.toFixed(0)} / ${g.targetAmount.toFixed(0)}
                   </p>
-                </div>
+                </Card>
               );
             })}
           </div>
