@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchGoals, createGoal, updateGoal, deleteGoal } from '../store/slices/goalSlice';
-import { Plus, Trash2, PlusCircle, X, CheckCircle2 } from 'lucide-react';
+import { Plus, Trash2, PlusCircle, X, CheckCircle2, Target } from 'lucide-react';
+import Modal from '../components/ui/Modal';
+import Card from '../components/ui/Card';
+import Button from '../components/ui/Button';
+import ProgressBar from '../components/ui/ProgressBar';
+import EmptyState from '../components/ui/EmptyState';
+import { useToast } from '../hooks/useToast';
 
 const CATEGORIES = ['emergency_fund', 'vacation', 'purchase', 'debt_payoff', 'investment', 'other'];
 
@@ -9,9 +15,10 @@ export default function GoalsPage() {
   const dispatch = useDispatch();
   const { items } = useSelector((s) => s.goals);
   const [showForm, setShowForm] = useState(false);
-  const [addingFundsId, setAddingFundsId] = useState(null);
+  const [fundingGoal, setFundingGoal] = useState(null);
   const [fundsAmount, setFundsAmount] = useState('');
   const [form, setForm] = useState({ name: '', targetAmount: '', targetDate: '', category: 'other' });
+  const toast = useToast();
 
   useEffect(() => { dispatch(fetchGoals()); }, [dispatch]);
 
@@ -20,15 +27,27 @@ export default function GoalsPage() {
     await dispatch(createGoal({ ...form, targetAmount: Number(form.targetAmount) }));
     setShowForm(false);
     setForm({ name: '', targetAmount: '', targetDate: '', category: 'other' });
+    toast.success('Goal created.');
   };
 
-  const handleAddFunds = async (goal) => {
-    if (!fundsAmount || isNaN(fundsAmount)) return;
-    await dispatch(updateGoal({
-      id: goal._id,
-      currentAmount: Math.min(goal.currentAmount + Number(fundsAmount), goal.targetAmount),
-    }));
-    setAddingFundsId(null);
+  const handleConfirmFunds = () => {
+    if (!fundingGoal) return false;
+    const amount = Number(fundsAmount);
+    if (!fundsAmount || isNaN(amount) || amount <= 0) return false;
+    const newAmount = Math.min(fundingGoal.currentAmount + amount, fundingGoal.targetAmount);
+    const reached = newAmount >= fundingGoal.targetAmount;
+    dispatch(updateGoal({ id: fundingGoal._id, currentAmount: newAmount }));
+    if (reached) {
+      toast.success(`Goal reached — ${fundingGoal.name} is fully funded!`, { duration: 5000 });
+    } else {
+      toast.success(`Added $${amount.toFixed(2)} to ${fundingGoal.name}.`);
+    }
+    setFundsAmount('');
+    setFundingGoal(null);
+  };
+
+  const closeFundsModal = () => {
+    setFundingGoal(null);
     setFundsAmount('');
   };
 
@@ -49,17 +68,12 @@ export default function GoalsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold" style={{ color: '#f1f5f9', letterSpacing: '-0.02em' }}>Goals</h1>
-        <button
-          onClick={() => setShowForm(true)}
-          className="btn-primary flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer"
-        >
-          <Plus size={16} /> New Goal
-        </button>
+        <Button icon={Plus} onClick={() => setShowForm(true)}>New Goal</Button>
       </div>
 
       {/* Form */}
       {showForm && (
-        <div className="glass-2 rounded-2xl p-6 space-y-5">
+        <Card variant="glass-2" className="space-y-5">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-sm" style={{ color: '#cbd5e1' }}>New Goal</h3>
             <button onClick={() => setShowForm(false)} className="cursor-pointer" style={{ color: '#475569' }}>
@@ -116,30 +130,20 @@ export default function GoalsPage() {
               </div>
             </div>
             <div className="flex gap-2">
-              <button type="submit" className="btn-primary px-5 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer">
-                Create Goal
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                className="px-5 py-2.5 rounded-xl text-sm font-medium cursor-pointer"
-                style={{ background: 'rgba(255,255,255,0.05)', color: '#94a3b8', border: '1px solid rgba(255,255,255,0.08)' }}
-              >
-                Cancel
-              </button>
+              <Button type="submit">Create Goal</Button>
+              <Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
             </div>
           </form>
-        </div>
+        </Card>
       )}
 
       {/* Goal cards */}
       <div className="grid grid-cols-2 gap-4">
         {items.map((g) => {
           const pct = Math.min((g.currentAmount / g.targetAmount) * 100, 100);
-          const isAddingFunds = addingFundsId === g._id;
 
           return (
-            <div key={g._id} className="glass rounded-2xl p-6">
+            <Card key={g._id}>
               {/* Top row */}
               <div className="flex items-start justify-between mb-1">
                 <div>
@@ -175,57 +179,21 @@ export default function GoalsPage() {
               </div>
 
               {/* Progress */}
-              <div className="progress-track h-1.5 mb-3">
-                <div
-                  className="progress-fill"
-                  style={{
-                    width: `${pct}%`,
-                    background: g.isCompleted
-                      ? 'linear-gradient(90deg,#10b981,#34d399)'
-                      : 'linear-gradient(90deg,#6366f1,#818cf8)',
-                  }}
-                />
+              <div className="mb-3">
+                <ProgressBar value={pct} variant={g.isCompleted ? 'success' : 'primary'} />
               </div>
 
               <div className="flex items-center justify-between">
                 <span className="text-xs font-mono" style={{ color: '#475569' }}>{pct.toFixed(0)}% complete</span>
 
                 {!g.isCompleted && (
-                  isAddingFunds ? (
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="number"
-                        value={fundsAmount}
-                        onChange={(e) => setFundsAmount(e.target.value)}
-                        className="input-dark rounded-lg px-2.5 py-1.5 text-xs font-mono w-24"
-                        placeholder="Amount"
-                        autoFocus
-                        min="1"
-                      />
-                      <button
-                        onClick={() => handleAddFunds(g)}
-                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer"
-                        style={{ background: 'rgba(16,185,129,0.15)', color: '#34d399', border: '1px solid rgba(16,185,129,0.25)' }}
-                      >
-                        Add
-                      </button>
-                      <button
-                        onClick={() => { setAddingFundsId(null); setFundsAmount(''); }}
-                        className="cursor-pointer"
-                        style={{ color: '#475569' }}
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setAddingFundsId(g._id)}
-                      className="flex items-center gap-1 text-xs font-medium cursor-pointer"
-                      style={{ color: '#818cf8' }}
-                    >
-                      <PlusCircle size={13} /> Add funds
-                    </button>
-                  )
+                  <button
+                    onClick={() => { setFundingGoal(g); setFundsAmount(''); }}
+                    className="flex items-center gap-1 text-xs font-medium cursor-pointer"
+                    style={{ color: '#818cf8' }}
+                  >
+                    <PlusCircle size={13} /> Add funds
+                  </button>
                 )}
               </div>
 
@@ -234,16 +202,53 @@ export default function GoalsPage() {
                   Target: {new Date(g.targetDate).toLocaleDateString()}
                 </p>
               )}
-            </div>
+            </Card>
           );
         })}
 
         {items.length === 0 && (
-          <p className="col-span-2 text-center py-16 text-sm" style={{ color: '#334155' }}>
-            No goals yet. Create one to start saving.
-          </p>
+          <div className="col-span-2">
+            <EmptyState
+              icon={Target}
+              title="No goals yet"
+              description="Create one to start saving."
+            />
+          </div>
         )}
       </div>
+
+      {fundingGoal && (
+        <Modal
+          title={`Add funds to ${fundingGoal.name}`}
+          onClose={closeFundsModal}
+          onConfirm={handleConfirmFunds}
+          confirmLabel="Add funds"
+        >
+          <div className="space-y-4">
+            <div className="flex justify-between items-baseline text-xs font-mono" style={{ color: '#64748b' }}>
+              <span>Current</span>
+              <span>
+                <span style={{ color: '#10b981' }}>${fundingGoal.currentAmount.toFixed(0)}</span>
+                <span style={{ color: '#334155' }}> / ${fundingGoal.targetAmount.toFixed(0)}</span>
+              </span>
+            </div>
+            <div>
+              <label className="block mb-1.5" style={{ color: '#94a3b8', fontSize: 13, fontWeight: 500 }}>
+                Contribution amount ($)
+              </label>
+              <input
+                type="number"
+                value={fundsAmount}
+                onChange={(e) => setFundsAmount(e.target.value)}
+                className="input-dark w-full rounded-xl px-4 py-2.5 text-sm font-mono"
+                placeholder="0.00"
+                autoFocus
+                min="1"
+              />
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
