@@ -1,7 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchTransactions } from '../store/slices/transactionSlice';
-import { Search } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import Skeleton from '../components/ui/Skeleton';
+
+function buildPageWindow(current, total, siblings = 1) {
+  const pages = [];
+  const first = 1;
+  const last = total;
+  const start = Math.max(current - siblings, first + 1);
+  const end = Math.min(current + siblings, last - 1);
+
+  pages.push(first);
+  if (start > first + 1) pages.push('ellipsis-left');
+  for (let p = start; p <= end; p++) pages.push(p);
+  if (end < last - 1) pages.push('ellipsis-right');
+  if (last > first) pages.push(last);
+  return pages;
+}
 
 export default function TransactionsPage() {
   const dispatch = useDispatch();
@@ -48,11 +64,21 @@ export default function TransactionsPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr>
-                <td colSpan={4} className="px-5 py-12 text-center text-sm" style={{ color: '#475569' }}>
-                  Loading…
-                </td>
-              </tr>
+              Array.from({ length: 8 }).map((_, i) => (
+                <tr
+                  key={`skeleton-${i}`}
+                  style={{ borderBottom: i < 7 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}
+                >
+                  <td className="px-5 py-3.5"><Skeleton width={72} height={12} /></td>
+                  <td className="px-5 py-3.5"><Skeleton width="60%" height={14} /></td>
+                  <td className="px-5 py-3.5"><Skeleton width={84} height={20} rounded={9999} /></td>
+                  <td className="px-5 py-3.5">
+                    <div className="flex justify-end">
+                      <Skeleton width={70} height={14} />
+                    </div>
+                  </td>
+                </tr>
+              ))
             ) : items.length === 0 ? (
               <tr>
                 <td colSpan={4} className="px-5 py-12 text-center text-sm" style={{ color: '#475569' }}>
@@ -98,24 +124,71 @@ export default function TransactionsPage() {
       </div>
 
       {/* Pagination */}
-      {pages > 1 && (
-        <div className="flex justify-center gap-1.5">
-          {Array.from({ length: pages }, (_, i) => i + 1).map((p) => (
-            <button
-              key={p}
-              onClick={() => setPage(p)}
-              className="w-8 h-8 rounded-lg text-xs font-medium cursor-pointer transition-all"
-              style={{
-                background: p === page ? 'linear-gradient(135deg,#6366f1,#4f46e5)' : 'rgba(255,255,255,0.05)',
-                color: p === page ? '#fff' : '#64748b',
-                border: p === page ? 'none' : '1px solid rgba(255,255,255,0.08)',
-              }}
-            >
-              {p}
-            </button>
-          ))}
-        </div>
+      <Pagination page={page} pages={pages} onChange={setPage} />
+    </div>
+  );
+}
+
+function Pagination({ page, pages, onChange }) {
+  const pageWindow = useMemo(() => buildPageWindow(page, pages, 1), [page, pages]);
+  if (pages <= 1) return null;
+
+  const navStyle = {
+    background: 'rgba(255,255,255,0.05)',
+    color: '#94a3b8',
+    border: '1px solid rgba(255,255,255,0.08)',
+  };
+  const disabledStyle = { opacity: 0.4, cursor: 'not-allowed' };
+
+  return (
+    <div className="flex justify-center items-center gap-1.5">
+      <button
+        onClick={() => onChange(page - 1)}
+        disabled={page === 1}
+        aria-label="Previous page"
+        className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-all"
+        style={{ ...navStyle, ...(page === 1 ? disabledStyle : null) }}
+      >
+        <ChevronLeft size={14} />
+      </button>
+
+      {pageWindow.map((p) =>
+        typeof p === 'string' ? (
+          <span
+            key={p}
+            className="w-8 h-8 flex items-center justify-center text-xs"
+            style={{ color: '#475569' }}
+            aria-hidden="true"
+          >
+            …
+          </span>
+        ) : (
+          <button
+            key={p}
+            onClick={() => onChange(p)}
+            aria-current={p === page ? 'page' : undefined}
+            className="w-8 h-8 rounded-lg text-xs font-medium cursor-pointer transition-all"
+            style={{
+              background: p === page ? 'linear-gradient(135deg,#6366f1,#4f46e5)' : 'rgba(255,255,255,0.05)',
+              color: p === page ? '#fff' : '#64748b',
+              border: p === page ? 'none' : '1px solid rgba(255,255,255,0.08)',
+              boxShadow: p === page ? '0 0 16px rgba(99,102,241,0.35)' : 'none',
+            }}
+          >
+            {p}
+          </button>
+        ),
       )}
+
+      <button
+        onClick={() => onChange(page + 1)}
+        disabled={page === pages}
+        aria-label="Next page"
+        className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-all"
+        style={{ ...navStyle, ...(page === pages ? disabledStyle : null) }}
+      >
+        <ChevronRight size={14} />
+      </button>
     </div>
   );
 }
