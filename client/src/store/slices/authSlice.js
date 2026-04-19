@@ -34,14 +34,16 @@ export const fetchMe = createAsyncThunk('auth/fetchMe', async (_, { rejectWithVa
 
 const authSlice = createSlice({
   name: 'auth',
-  initialState: { user: null, loading: false, error: null },
+  initialState: { user: null, loading: false, error: null, authChecked: false },
   reducers: {
     logout(state) {
       state.user = null;
+      state.authChecked = true;
       localStorage.removeItem('token');
       localStorage.removeItem('refreshToken');
     },
     clearError(state) { state.error = null; },
+    markAuthChecked(state) { state.authChecked = true; },
   },
   extraReducers: (builder) => {
     const pending = (state) => { state.loading = true; state.error = null; };
@@ -49,11 +51,24 @@ const authSlice = createSlice({
     const rejected = (state, action) => { state.loading = false; state.error = action.payload; };
 
     builder
-      .addCase(login.pending, pending).addCase(login.fulfilled, fulfilled).addCase(login.rejected, rejected)
-      .addCase(register.pending, pending).addCase(register.fulfilled, fulfilled).addCase(register.rejected, rejected)
-      .addCase(fetchMe.fulfilled, fulfilled);
+      .addCase(login.pending, pending)
+      .addCase(login.fulfilled, (state, action) => { fulfilled(state, action); state.authChecked = true; })
+      .addCase(login.rejected, rejected)
+      .addCase(register.pending, pending)
+      .addCase(register.fulfilled, (state, action) => { fulfilled(state, action); state.authChecked = true; })
+      .addCase(register.rejected, rejected)
+      .addCase(fetchMe.pending, pending)
+      .addCase(fetchMe.fulfilled, (state, action) => { fulfilled(state, action); state.authChecked = true; })
+      .addCase(fetchMe.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+        state.user = null;
+        state.authChecked = true;
+        localStorage.removeItem('token');
+        localStorage.removeItem('refreshToken');
+      });
   },
 });
 
-export const { logout, clearError } = authSlice.actions;
+export const { logout, clearError, markAuthChecked } = authSlice.actions;
 export default authSlice.reducer;
