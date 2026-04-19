@@ -1,7 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchBudgets, upsertBudget, deleteBudget } from '../store/slices/budgetSlice';
 import { Plus, Trash2, X } from 'lucide-react';
+import Card from '../components/ui/Card';
+import Button from '../components/ui/Button';
+import ProgressBar from '../components/ui/ProgressBar';
+import EmptyState from '../components/ui/EmptyState';
+import { useToast } from '../hooks/useToast';
 
 const CATEGORIES = ['Food', 'Transport', 'Entertainment', 'Shopping', 'Utilities', 'Health', 'Travel', 'Other'];
 
@@ -13,10 +18,23 @@ export default function BudgetsPage() {
   const [month] = useState(now.getMonth() + 1);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ category: CATEGORIES[0], limit: '', color: '#6366f1' });
+  const toast = useToast();
+  const warnedRef = useRef(new Set());
 
   useEffect(() => {
     dispatch(fetchBudgets({ year, month }));
   }, [dispatch, year, month]);
+
+  useEffect(() => {
+    items.forEach((b) => {
+      if (b.spent > b.limit && !warnedRef.current.has(b._id)) {
+        warnedRef.current.add(b._id);
+        toast.warning(
+          `${b.category} budget exceeded by $${(b.spent - b.limit).toFixed(2)}`,
+        );
+      }
+    });
+  }, [items, toast]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -42,17 +60,12 @@ export default function BudgetsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold" style={{ color: '#f1f5f9', letterSpacing: '-0.02em' }}>Budgets</h1>
-        <button
-          onClick={() => setShowForm(true)}
-          className="btn-primary flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer"
-        >
-          <Plus size={16} /> Add Budget
-        </button>
+        <Button onClick={() => setShowForm(true)} icon={Plus}>Add Budget</Button>
       </div>
 
       {/* Form */}
       {showForm && (
-        <div className="glass-2 rounded-2xl p-6 space-y-5">
+        <Card variant="glass-2" className="space-y-5">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-sm" style={{ color: '#cbd5e1' }}>New Budget</h3>
             <button onClick={() => setShowForm(false)} className="cursor-pointer" style={{ color: '#475569' }}>
@@ -95,20 +108,11 @@ export default function BudgetsPage() {
               </div>
             </div>
             <div className="flex gap-2">
-              <button type="submit" className="btn-primary px-5 py-2.5 rounded-xl text-sm font-semibold text-white cursor-pointer">
-                Save
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                className="px-5 py-2.5 rounded-xl text-sm font-medium cursor-pointer"
-                style={{ background: 'rgba(255,255,255,0.05)', color: '#94a3b8', border: '1px solid rgba(255,255,255,0.08)' }}
-              >
-                Cancel
-              </button>
+              <Button type="submit">Save</Button>
+              <Button variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
             </div>
           </form>
-        </div>
+        </Card>
       )}
 
       {/* Budget cards */}
@@ -117,7 +121,7 @@ export default function BudgetsPage() {
           const pct = Math.min((b.spent / b.limit) * 100, 100);
           const over = b.spent > b.limit;
           return (
-            <div key={b._id} className="glass rounded-2xl p-6">
+            <Card key={b._id}>
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2.5">
                   <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: b.color }} />
@@ -141,17 +145,13 @@ export default function BudgetsPage() {
                 <span style={{ color: '#475569' }}>${b.limit.toFixed(2)} limit</span>
               </div>
 
-              <div className="progress-track h-1.5">
-                <div
-                  className="progress-fill"
-                  style={{
-                    width: `${pct}%`,
-                    background: over
-                      ? 'linear-gradient(90deg,#ef4444,#f87171)'
-                      : `linear-gradient(90deg, ${b.color}, ${b.color}cc)`,
-                  }}
-                />
-              </div>
+              <ProgressBar
+                value={pct}
+                height="sm"
+                gradient={over
+                  ? 'linear-gradient(90deg,#ef4444,#f87171)'
+                  : `linear-gradient(90deg, ${b.color}, ${b.color}cc)`}
+              />
 
               {over && (
                 <p className="text-xs mt-2 font-mono" style={{ color: '#f87171' }}>
